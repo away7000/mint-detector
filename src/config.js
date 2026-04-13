@@ -1,0 +1,5 @@
+export const CONFIG = {
+  MIN_ETH: 0.01,
+  MAX_CONTRACT_AGE: 10800,
+  BURST_THRESHOLD: 5,
+};

@@ -6,14 +6,11 @@ import { getCollection } from "./opensea.js";
 
 const provider = new ethers.WebSocketProvider(process.env.RPC_WSS);
 
-// SeaDrop contract (OpenSea mint)
+// SeaDrop contract
 const SEADROP = "0x00005ea00ac477b1030ce78506496e8c2de24bf5";
 
 console.log("🚀 SeaDrop Mint Detector Running...");
 
-// ==========================
-// LISTEN MEMPOOL
-// ==========================
 provider.on("pending", async (txHash) => {
   try {
     const tx = await provider.getTransaction(txHash);
@@ -28,20 +25,32 @@ provider.on("pending", async (txHash) => {
     if (tx.value == 0n) return;
 
     const eth = Number(tx.value) / 1e18;
-
-    // filter kecil biar ga noise
     if (eth < 0.01) return;
 
-    const contract = tx.to.toLowerCase();
+    // ==========================
+    // 🔥 DECODE NFT CONTRACT
+    // ==========================
+    let nftContract;
 
-    // ambil info dari OpenSea API
-    const info = await getCollection(contract);
+    try {
+      nftContract = "0x" + tx.data.slice(34, 74);
+    } catch {
+      return;
+    }
+
+    // ==========================
+    // 🔥 GET OPENSEA DATA
+    // ==========================
+    const info = await getCollection(nftContract);
 
     const name = info?.name || "Unknown Collection";
     const url =
-      info?.url || `https://opensea.io/assets/ethereum/${contract}`;
+      info?.url || `https://opensea.io/assets/ethereum/${nftContract}`;
     const price = formatETH(tx.value);
 
+    // ==========================
+    // 🔥 OUTPUT
+    // ==========================
     const message = `
 🔥 <b>NEW MINT LIVE</b>
 
@@ -52,7 +61,7 @@ provider.on("pending", async (txHash) => {
 ${url}
 
 📜 Contract:
-<code>${contract}</code>
+<code>${nftContract}</code>
 `;
 
     await sendAlert(message);

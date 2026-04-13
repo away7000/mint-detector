@@ -2,6 +2,7 @@ import "dotenv/config";
 import { ethers } from "ethers";
 import { sendAlert } from "./telegram.js";
 import { formatETH } from "./utils.js";
+import { getCollection } from "./opensea.js";
 
 const provider = new ethers.WebSocketProvider(process.env.RPC_WSS);
 
@@ -40,7 +41,30 @@ From: <code>${tx.from}</code>
 Tx:
 https://etherscan.io/tx/${tx.hash}
 `;
+    
+const info = await getCollection(contract);
 
+let extra = "";
+
+if (info) {
+  extra = `
+Collection: <b>${info.name}</b>
+OpenSea: ${info.url}
+`;
+}
+
+const msg = `
+🔥 <b>SEADROP MINT DETECTED</b>
+
+${extra}
+Value: ${formatETH(tx.value)} ETH
+Minter: <code>${tx.from}</code>
+
+Tx:
+https://etherscan.io/tx/${tx.hash}
+`;
+
+await sendAlert(msg);
     await sendAlert(msg);
   } catch (err) {}
 });

@@ -1,91 +1,46 @@
 import "dotenv/config";
 import { ethers } from "ethers";
-import { CONFIG } from "./config.js";
-import {
-  trackMint,
-  getMintCount,
-  resetMint,
-  trackContract,
-} from "./tracker.js";
-import { isValidMint } from "./filters.js";
 import { sendAlert } from "./telegram.js";
 import { formatETH } from "./utils.js";
 
 const provider = new ethers.WebSocketProvider(process.env.RPC_WSS);
 
-console.log("🚀 Alpha Mint Detector Running...");
+// Seaport contract
+const SEAPORT = "0x00005ea00ac477b1030ce78506496e8c2de24bf5";
+
+console.log("🚀 Seaport Monitor Running...");
 
 // ==========================
-// MAIN LISTENER (MEMPOOL)
+// LISTEN MEMPOOL
 // ==========================
 provider.on("pending", async (txHash) => {
   try {
     const tx = await provider.getTransaction(txHash);
     if (!tx || !tx.to) return;
 
-    const contract = tx.to.toLowerCase();
+    const to = tx.to.toLowerCase();
 
-    // track contract first seen
-    trackContract(contract);
+    // ✅ hanya Seaport
+    if (to !== SEAPORT) return;
 
-    // filter mint
-    if (!isValidMint(tx, contract)) return;
+    // skip tx tanpa value
+    if (tx.value == 0n) return;
 
-    // track mint
-    trackMint(contract);
-    const count = getMintCount(contract);
+    const eth = Number(tx.value) / 1e18;
 
-    // burst detection
-    if (count >= CONFIG.BURST_THRESHOLD) {
-      const msg = `
-🔥 <b>ALPHA MINT DETECTED</b>
+    // filter kecil biar ga noise
+    if (eth < 0.01) return;
 
-Contract: <code>${contract}</code>
-Mints: ${count}
+    const msg = `
+🔥 <b>OPENSEA BUY DETECTED</b>
+
 Value: ${formatETH(tx.value)} ETH
+From: <code>${tx.from}</code>
 
-Tx: https://etherscan.io/tx/${tx.hash}
+Tx:
+https://etherscan.io/tx/${tx.hash}
 `;
 
-      await sendAlert(msg);
-
-      // reset biar ga spam
-      resetMint(contract);
-    }
-  } catch (err) {
-    // silent error biar ga crash
-  }
+    await sendAlert(msg);
+  } catch (err) {}
 });
-
-// ==========================
-// KEEP ALIVE LOG
-// ==========================
-setInterval(() => {
-  console.log("🟢 still alive", new Date().toISOString());
-}, 60000);
-
-// ==========================
-// ERROR HANDLING (ethers v6 safe)
-// ==========================
-provider.on("error", (err) => {
-  console.log("⚠️ Provider error:", err.message);
-});
-
-// ==========================
-// WATCHDOG (ANTI FREEZE)
-// ==========================
-let lastBlock = Date.now();
-
-provider.on("block", () => {
-  lastBlock = Date.now();
-});
-
-// kalau ga dapet block → restart
-setInterval(() => {
-  const now = Date.now();
-
-  if (now - lastBlock > 60000) {
-    console.log("💀 No block detected. Restarting...");
-    process.exit(1); // Railway auto restart
-  }
-}, 30000);

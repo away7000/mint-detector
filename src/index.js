@@ -6,10 +6,10 @@ import { getCollection } from "./opensea.js";
 
 const provider = new ethers.WebSocketProvider(process.env.RPC_WSS);
 
-// Seaport contract
-const SEAPORT = "0x00005ea00ac477b1030ce78506496e8c2de24bf5";
+// SeaDrop contract (OpenSea mint)
+const SEADROP = "0x00005ea00ac477b1030ce78506496e8c2de24bf5";
 
-console.log("🚀 Seaport Monitor Running...");
+console.log("🚀 SeaDrop Mint Detector Running...");
 
 // ==========================
 // LISTEN MEMPOOL
@@ -21,10 +21,10 @@ provider.on("pending", async (txHash) => {
 
     const to = tx.to.toLowerCase();
 
-    // ✅ hanya Seaport
-    if (to !== SEAPORT) return;
+    // hanya SeaDrop
+    if (to !== SEADROP) return;
 
-    // skip tx tanpa value
+    // skip kalau ga ada value
     if (tx.value == 0n) return;
 
     const eth = Number(tx.value) / 1e18;
@@ -32,34 +32,61 @@ provider.on("pending", async (txHash) => {
     // filter kecil biar ga noise
     if (eth < 0.01) return;
 
-    const msg = `
-🔥 <b>OPENSEA BUY DETECTED</b>
+    const contract = tx.to.toLowerCase();
 
-Value: ${formatETH(tx.value)} ETH
-From: <code>${tx.from}</code>
+    // ambil info dari OpenSea API
+    const info = await getCollection(contract);
 
-Tx:
-https://etherscan.io/tx/${tx.hash}
-`;
-    
-const info = await getCollection(contract);
+    const name = info?.name || "Unknown Collection";
+    const url =
+      info?.url || `https://opensea.io/assets/ethereum/${contract}`;
+    const price = formatETH(tx.value);
 
-// fallback kalau API belum dapet
-const name = info?.name || "Unknown Collection";
-const url = info?.url || `https://opensea.io/assets/ethereum/${contract}`;
-const price = formatETH(tx.value);
-
-const msg = `
+    const message = `
 🔥 <b>NEW MINT LIVE</b>
 
-Collection: <b>${name}</b>
-Price: ${price} ETH
+🎨 Collection: <b>${name}</b>
+💰 Price: ${price} ETH
 
-Mint:
+🔗 Mint:
 ${url}
 
-Contract:
+📜 Contract:
 <code>${contract}</code>
 `;
 
-await sendAlert(msg);
+    await sendAlert(message);
+  } catch (err) {
+    // biar ga crash
+  }
+});
+
+// ==========================
+// KEEP ALIVE
+// ==========================
+setInterval(() => {
+  console.log("🟢 still alive", new Date().toISOString());
+}, 60000);
+
+// ==========================
+// ERROR HANDLER
+// ==========================
+provider.on("error", (err) => {
+  console.log("⚠️ Provider error:", err.message);
+});
+
+// ==========================
+// WATCHDOG (ANTI FREEZE)
+// ==========================
+let lastBlock = Date.now();
+
+provider.on("block", () => {
+  lastBlock = Date.now();
+});
+
+setInterval(() => {
+  if (Date.now() - lastBlock > 60000) {
+    console.log("💀 No block detected. Restarting...");
+    process.exit(1);
+  }
+}, 30000);

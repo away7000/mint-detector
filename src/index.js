@@ -44,27 +44,22 @@ https://etherscan.io/tx/${tx.hash}
     
 const info = await getCollection(contract);
 
-let extra = "";
-
-if (info) {
-  extra = `
-Collection: <b>${info.name}</b>
-OpenSea: ${info.url}
-`;
-}
+// fallback kalau API belum dapet
+const name = info?.name || "Unknown Collection";
+const url = info?.url || `https://opensea.io/assets/ethereum/${contract}`;
+const price = formatETH(tx.value);
 
 const msg = `
-🔥 <b>SEADROP MINT DETECTED</b>
+🔥 <b>NEW MINT LIVE</b>
 
-${extra}
-Value: ${formatETH(tx.value)} ETH
-Minter: <code>${tx.from}</code>
+Collection: <b>${name}</b>
+Price: ${price} ETH
 
-Tx:
-https://etherscan.io/tx/${tx.hash}
+Mint:
+${url}
+
+Contract:
+<code>${contract}</code>
 `;
 
 await sendAlert(msg);
-    await sendAlert(msg);
-  } catch (err) {}
-});

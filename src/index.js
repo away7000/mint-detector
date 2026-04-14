@@ -62,7 +62,21 @@ provider.on("pending", async (txHash) => {
 
     if (methodId === "0x84bb1e42") mintType = "PUBLIC";
     if (methodId === "0x9a1fc3a7") mintType = "WHITELIST";
+// ==========================
+// 🔥 FILTER ALPHA ONLY
+// ==========================
 
+// hanya free mint
+if (tx.value !== 0n) return;
+
+// skip kalau contract lama
+if (nftContract === "Unknown") return;
+
+const fresh = isFresh(nftContract);
+const early = isEarly(nftContract);
+
+// hanya alert pertama kali + early window
+if (!fresh && !early) return;
     // ==========================
     // 🔥 OPENSEA DATA
     // ==========================
@@ -82,11 +96,11 @@ provider.on("pending", async (txHash) => {
     // 🚀 OUTPUT
     // ==========================
     const message = `
-🔥 <b>NEW MINT LIVE (SEADROP)</b>
+🆓 <b>FREE MINT LIVE</b>
+
+🚀 <b>EARLY DROP DETECTED</b>
 
 🎨 Collection: <b>${name}</b>
-💰 Price: ${price} ETH
-🧠 Type: ${mintType}
 📦 Qty: ${quantity}
 
 🔗 Mint:

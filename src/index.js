@@ -9,65 +9,65 @@ const provider = new ethers.WebSocketProvider(process.env.RPC_WSS);
 
 const SEADROP = "0x00005ea00ac477b1030ce78506496e8c2de24bf5";
 
-// decoder
 const iface = new ethers.Interface(SEADROP_ABI);
 
-console.log("🚀 SeaDrop PRO Detector Running...");
+console.log("🚀 SeaDrop Detector Running (NO MISS MODE)...");
 
 provider.on("pending", async (txHash) => {
   try {
     const tx = await provider.getTransaction(txHash);
-    if (!tx || !tx.to || !tx.data) return;
+    if (!tx || !tx.to) return;
 
+    // hanya SeaDrop
     if (tx.to.toLowerCase() !== SEADROP) return;
-    if (tx.value == 0n) return;
 
-    const eth = Number(tx.value) / 1e18;
-    if (eth < 0.01) return;
+    const price = formatETH(tx.value);
 
-    let decoded;
+    let nftContract = "Unknown";
+    let minter = tx.from;
+    let quantity = "?";
+    let mintType = "UNKNOWN";
+
+    // ==========================
+    // 🔥 TRY DECODE (kalau gagal tetap lanjut)
+    // ==========================
     try {
-      decoded = iface.parseTransaction({
+      const decoded = iface.parseTransaction({
         data: tx.data,
         value: tx.value
       });
+
+      nftContract = decoded.args[0];
+      minter = decoded.args[1];
+      quantity = decoded.args[2];
+
+      if (decoded.name === "mintPublic") mintType = "PUBLIC";
+      if (decoded.name === "mintAllowed") mintType = "WHITELIST";
+      if (decoded.name === "mintSigned") mintType = "SIGNED";
+
     } catch {
-      return; // bukan mint function
+      console.log("⚠️ decode gagal, fallback mode:", tx.hash);
     }
 
     // ==========================
-    // 🔥 AMBIL DATA
+    // 🔥 OPENSEA DATA (optional)
     // ==========================
-    const nftContract = decoded.args[0];
-    const minter = decoded.args[1];
-    const quantity = decoded.args[2];
-
-    const method = decoded.name;
-
-    // ==========================
-    // 🧠 TYPE DETECTION
-    // ==========================
-    let mintType = "UNKNOWN";
-
-    if (method === "mintPublic") mintType = "PUBLIC";
-    if (method === "mintAllowed") mintType = "WHITELIST";
-    if (method === "mintSigned") mintType = "SIGNED";
-
-    // ==========================
-    // 🔥 OPENSEA DATA
-    // ==========================
-    const info = await getCollection(nftContract);
+    const info =
+      nftContract !== "Unknown"
+        ? await getCollection(nftContract)
+        : null;
 
     const name = info?.name || "Unknown Collection";
     const url =
-      info?.url || `https://opensea.io/assets/ethereum/${nftContract}`;
-    const price = formatETH(tx.value);
+      nftContract !== "Unknown"
+        ? info?.url || `https://opensea.io/assets/ethereum/${nftContract}`
+        : "https://opensea.io";
 
     // ==========================
     // 🚀 OUTPUT
     // ==========================
     const message = `
-🔥 <b>NEW MINT LIVE</b>
+🔥 <b>NEW MINT LIVE (SEADROP)</b>
 
 🎨 Collection: <b>${name}</b>
 💰 Price: ${price} ETH
@@ -85,18 +85,14 @@ ${url}
 `;
 
     await sendAlert(message);
+
   } catch (err) {}
 });
 
 // keep alive
 setInterval(() => {
-  console.log("🟢 still alive", new Date().toISOString());
+  console.log("🟢 alive", new Date().toISOString());
 }, 60000);
-
-// error handler
-provider.on("error", (err) => {
-  console.log("⚠️ Provider error:", err.message);
-});
 
 // watchdog
 let lastBlock = Date.now();
@@ -107,7 +103,7 @@ provider.on("block", () => {
 
 setInterval(() => {
   if (Date.now() - lastBlock > 60000) {
-    console.log("💀 Restarting...");
+    console.log("💀 restart...");
     process.exit(1);
   }
 }, 30000);

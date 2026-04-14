@@ -3,6 +3,7 @@ import { ethers } from "ethers";
 import { sendAlert } from "./telegram.js";
 import { formatETH } from "./utils.js";
 import { getCollection } from "./opensea.js";
+import { isFresh } from "./fresh.js";
 
 const provider = new ethers.WebSocketProvider(process.env.RPC_WSS);
 
@@ -35,6 +36,15 @@ provider.on("pending", async (txHash) => {
       nftContract = "0x" + chunks.slice(24, 64);
     }
 
+    if (nftContract !== "Unknown") {
+
+    const fresh = isFresh(nftContract);
+
+    if (!fresh) {
+    // skip kalau bukan mint baru
+    return;
+  }
+}
     // minter
     const minter = tx.from;
 

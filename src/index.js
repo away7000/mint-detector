@@ -64,6 +64,22 @@ provider.on("pending", async (txHash) => {
       nftContract = "0x" + chunks.slice(24, 64);
     }
 
+    // ==========================
+// BARU SCORING
+// ==========================
+const burst = trackBurst(nftContract);
+
+const hasTwitter = !!info?.twitter;
+const hasDiscord = !!info?.discord;
+
+const score = getScore({
+  hasTwitter,
+  hasDiscord,
+  burst
+});
+
+const verdict = getVerdict(score);
+    
     const minter = tx.from;
 
     let quantity = "?";
@@ -112,17 +128,6 @@ provider.on("pending", async (txHash) => {
   }
 
   processing--;
-});
-
-    const burst = trackBurst(nftContract);
-
-    const hasTwitter = !!info?.twitter;
-    const hasDiscord = !!info?.discord;
-
-    const score = getScore({
-    hasTwitter,
-    hasDiscord,
-    burst
 });
 
     const verdict = getVerdict(score);

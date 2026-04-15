@@ -9,10 +9,10 @@ const provider = new ethers.WebSocketProvider(process.env.RPC_WSS);
 
 const SEADROP = "0x00005ea00ac477b1030ce78506496e8c2de24bf5";
 
-console.log("🚀 SeaDrop Detector (FINAL UI MODE)...");
+console.log("🚀 SeaDrop Detector (FINAL STABLE + SCORE)...");
 
 // ==========================
-// RETRY TX (ANTI ERROR)
+// RETRY TX
 // ==========================
 async function getTx(hash, retry = 2) {
   for (let i = 0; i < retry; i++) {
@@ -27,7 +27,7 @@ async function getTx(hash, retry = 2) {
 }
 
 // ==========================
-// LIMIT BIAR GA OVERLOAD
+// LIMIT CONCURRENT
 // ==========================
 let processing = 0;
 const MAX_CONCURRENT = 5;
@@ -36,8 +36,8 @@ const MAX_CONCURRENT = 5;
 // LISTEN MEMPOOL
 // ==========================
 provider.on("pending", async (txHash) => {
-  if (processing >= MAX_CONCURRENT) return;
   if (!txHash) return;
+  if (processing >= MAX_CONCURRENT) return;
 
   processing++;
 
@@ -54,63 +54,64 @@ provider.on("pending", async (txHash) => {
     console.log("🔥 FREE MINT DETECTED");
 
     // ==========================
-    // DECODE MANUAL
+    // 1. DECODE CONTRACT
     // ==========================
     const chunks = tx.data.slice(10);
 
     let nftContract = "Unknown";
-
     if (chunks.length >= 64) {
       nftContract = "0x" + chunks.slice(24, 64);
     }
 
+    if (nftContract === "Unknown") return;
+
     // ==========================
-// BARU SCORING
-// ==========================
-const burst = trackBurst(nftContract);
+    // 2. FETCH OPENSEA DATA
+    // ==========================
+    let name = "Unknown";
+    let url = `https://opensea.io/assets/ethereum/${nftContract}`;
+    let info = null;
 
-const hasTwitter = !!info?.twitter;
-const hasDiscord = !!info?.discord;
-
-const score = getScore({
-  hasTwitter,
-  hasDiscord,
-  burst
-});
-
-const verdict = getVerdict(score);
-    
-    const minter = tx.from;
-
-    let quantity = "?";
     try {
-      quantity = parseInt(chunks.slice(64, 128), 16);
+      info = await getCollection(nftContract);
+
+      if (info) {
+        name = info.name || "Unknown";
+        url = info.url || url;
+      }
     } catch {}
 
     // ==========================
-    // OPENSEA DATA
+    // 3. BURST TRACKING
     // ==========================
-    let name = "Unknown";
-    let url = "https://opensea.io";
-
-    if (nftContract !== "Unknown") {
-      const info = await getCollection(nftContract);
-
-      name = info?.name || "Unknown";
-      url =
-        info?.url ||
-        `https://opensea.io/assets/ethereum/${nftContract}`;
-    }
+    const burst = trackBurst(nftContract);
 
     // ==========================
-    // FINAL UI (KAYAK GAMBAR)
+    // 4. SOCIAL CHECK
+    // ==========================
+    const hasTwitter = !!info?.twitter;
+    const hasDiscord = !!info?.discord;
+
+    // ==========================
+    // 5. SCORING
+    // ==========================
+    const score = getScore({
+      hasTwitter,
+      hasDiscord,
+      burst
+    });
+
+    const verdict = getVerdict(score);
+
+    // ==========================
+    // 6. OUTPUT UI
     // ==========================
     const message = `
 🚨 <b>FREEMINT NOW (Public)</b> 🚨
 
 <b>Name:</b> ${name}
 <b>Chain:</b> Ethereum
-💎 <b>Price:</b> FREEMINT (Public)
+💎 <b>Price:</b> FREEMINT
 <b>Status:</b> 🔥 Minting Now
 
 🧠 <b>Score:</b> ${score}/100
@@ -129,8 +130,6 @@ const verdict = getVerdict(score);
 
   processing--;
 });
-
-    const verdict = getVerdict(score);
 
 // ==========================
 // KEEP ALIVE

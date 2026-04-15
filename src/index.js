@@ -8,27 +8,36 @@ const provider = new ethers.JsonRpcProvider(process.env.RPC_HTTPS);
 
 const SEADROP = "0x00005ea00ac477b1030ce78506496e8c2de24bf5";
 
-console.log("🚀 SeaDrop Detector (HTTPS MODE)...");
+console.log("🚀 SeaDrop Detector (POLLING MODE)...");
+
+let lastBlock = 0;
 
 // ==========================
-// LISTEN BLOCK (BUKAN MEMPOOL)
+// LOOP POLLING
 // ==========================
-provider.on("block", async (blockNumber) => {
+async function loop() {
   try {
-    console.log("📦 Block:", blockNumber);
+    const blockNumber = await provider.getBlockNumber();
+
+    if (blockNumber === lastBlock) return;
+
+    console.log("📦 New Block:", blockNumber);
 
     const block = await provider.getBlock(blockNumber, true);
+
+    lastBlock = blockNumber;
 
     for (const tx of block.transactions) {
       if (!tx.to) continue;
 
-      // hanya SeaDrop
       if (tx.to.toLowerCase() !== SEADROP) continue;
+
+      console.log("🔥 SeaDrop TX detected");
 
       const price = formatETH(tx.value);
 
       // ==========================
-      // 🔥 MANUAL DECODE
+      // DECODE
       // ==========================
       const methodId = tx.data.slice(0, 10);
       const chunks = tx.data.slice(10);
@@ -48,13 +57,8 @@ provider.on("block", async (blockNumber) => {
         } catch {}
       }
 
-      let mintType = "UNKNOWN";
-
-      if (methodId === "0x84bb1e42") mintType = "PUBLIC";
-      if (methodId === "0x9a1fc3a7") mintType = "WHITELIST";
-
       // ==========================
-      // 🔥 OPENSEA DATA
+      // OPENSEA
       // ==========================
       let name = "Unknown Collection";
       let url = "https://opensea.io";
@@ -69,7 +73,7 @@ provider.on("block", async (blockNumber) => {
       }
 
       // ==========================
-      // 🚀 OUTPUT
+      // OUTPUT
       // ==========================
       const message = `
 🆓 <b>FREE MINT LIVE</b>
@@ -89,4 +93,9 @@ ${url}
   } catch (err) {
     console.log("error:", err.message);
   }
-});
+}
+
+// ==========================
+// RUN LOOP
+// ==========================
+setInterval(loop, 3000); // tiap 3 detik

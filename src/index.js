@@ -4,78 +4,92 @@ import { sendAlert } from "./telegram.js";
 import { formatETH } from "./utils.js";
 import { getCollection } from "./opensea.js";
 
-const provider = new ethers.JsonRpcProvider(process.env.RPC_HTTPS);
+const provider = new ethers.WebSocketProvider(process.env.RPC_WSS);
 
 const SEADROP = "0x00005ea00ac477b1030ce78506496e8c2de24bf5";
 
-console.log("🚀 SeaDrop Detector (POLLING MODE)...");
-
-let lastBlock = 0;
+console.log("🚀 SeaDrop Detector (WSS MODE)...");
 
 // ==========================
-// LOOP POLLING
+// RETRY GET TX (ANTI RPC ERROR)
 // ==========================
-async function loop() {
+async function getTx(hash, retry = 3) {
+  for (let i = 0; i < retry; i++) {
+    try {
+      const tx = await provider.getTransaction(hash);
+      if (tx) return tx;
+    } catch (e) {
+      console.log("⚠️ retry tx...", i + 1);
+    }
+
+    await new Promise((r) => setTimeout(r, 200));
+  }
+
+  return null;
+}
+
+// ==========================
+// LISTEN MEMPOOL
+// ==========================
+provider.on("pending", async (txHash) => {
   try {
-    const blockNumber = await provider.getBlockNumber();
+    if (!txHash) return;
 
-    if (blockNumber === lastBlock) return;
+    const tx = await getTx(txHash);
+    if (!tx || !tx.to || !tx.data) return;
 
-    console.log("📦 New Block:", blockNumber);
+    // hanya SeaDrop
+    if (tx.to.toLowerCase() !== SEADROP) return;
 
-    const block = await provider.getBlock(blockNumber, true);
+    console.log("🔥 SeaDrop TX detected");
 
-    lastBlock = blockNumber;
+    const price = formatETH(tx.value);
 
-    for (const tx of block.transactions) {
-      if (!tx.to) continue;
+    // ==========================
+    // 🔥 MANUAL DECODE
+    // ==========================
+    const methodId = tx.data.slice(0, 10);
+    const chunks = tx.data.slice(10);
 
-      if (tx.to.toLowerCase() !== SEADROP) continue;
+    let nftContract = "Unknown";
 
-      console.log("🔥 SeaDrop TX detected");
+    if (chunks.length >= 64) {
+      nftContract = "0x" + chunks.slice(24, 64);
+    }
 
-      const price = formatETH(tx.value);
+    const minter = tx.from;
 
-      // ==========================
-      // DECODE
-      // ==========================
-      const methodId = tx.data.slice(0, 10);
-      const chunks = tx.data.slice(10);
+    let quantity = "?";
+    if (chunks.length >= 128) {
+      try {
+        quantity = parseInt(chunks.slice(64, 128), 16);
+      } catch {}
+    }
 
-      let nftContract = "Unknown";
+    // ==========================
+    // 🔥 FILTER FREE MINT ONLY
+    // ==========================
+    if (tx.value !== 0n) return;
 
-      if (chunks.length >= 64) {
-        nftContract = "0x" + chunks.slice(24, 64);
-      }
+    // ==========================
+    // 🔥 OPENSEA DATA
+    // ==========================
+    let name = "Unknown Collection";
+    let url = "https://opensea.io";
 
-      const minter = tx.from;
+    if (nftContract !== "Unknown") {
+      const info = await getCollection(nftContract);
 
-      let quantity = "?";
-      if (chunks.length >= 128) {
-        try {
-          quantity = parseInt(chunks.slice(64, 128), 16);
-        } catch {}
-      }
+      name = info?.name || "Unknown Collection";
+      url =
+        info?.url ||
+        `https://opensea.io/assets/ethereum/${nftContract}`;
+    }
 
-      // ==========================
-      // OPENSEA
-      // ==========================
-      let name = "Unknown Collection";
-      let url = "https://opensea.io";
-
-      if (nftContract !== "Unknown") {
-        const info = await getCollection(nftContract);
-
-        name = info?.name || "Unknown Collection";
-        url =
-          info?.url ||
-          `https://opensea.io/assets/ethereum/${nftContract}`;
-      }
-
-      // ==========================
-      // OUTPUT
-      // ==========================
-      const message = `
+    // ==========================
+    // 🚀 OUTPUT
+    // ==========================
+    const message = `
 🆓 <b>FREE MINT LIVE</b>
 
 🎨 Collection: <b>${name}</b>
@@ -84,18 +98,30 @@ async function loop() {
 🔗 Mint:
 ${url}
 
+👤 Minter:
+<code>${minter}</code>
+
 📜 Contract:
 <code>${nftContract}</code>
 `;
 
-      await sendAlert(message);
-    }
+    await sendAlert(message);
+
   } catch (err) {
     console.log("error:", err.message);
   }
-}
+});
 
 // ==========================
-// RUN LOOP
+// KEEP ALIVE (BIAR RAILWAY GA MATI)
 // ==========================
-setInterval(loop, 3000); // tiap 3 detik
+setInterval(() => {
+  console.log("🟢 alive", new Date().toISOString());
+}, 60000);
+
+// ==========================
+// ERROR HANDLER
+// ==========================
+provider.on("error", (err) => {
+  console.log("⚠️ provider error:", err.message);
+});

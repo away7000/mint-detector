@@ -2,6 +2,8 @@ import "dotenv/config";
 import { ethers } from "ethers";
 import { sendAlert } from "./telegram.js";
 import { getCollection } from "./opensea.js";
+import { trackBurst } from "./burst.js";
+import { getScore, getVerdict } from "./scoring.js";
 
 const provider = new ethers.WebSocketProvider(process.env.RPC_WSS);
 
@@ -95,6 +97,10 @@ provider.on("pending", async (txHash) => {
 💎 <b>Price:</b> FREEMINT (Public)
 <b>Status:</b> 🔥 Minting Now
 
+🧠 <b>Score:</b> ${score}/100
+📊 <b>Verdict:</b> ${verdict}
+⚡ <b>Burst:</b> ${burst}/30s
+
 🖼 <a href="${url}">View on OpenSea</a>
 🔍 <a href="https://etherscan.io/address/${nftContract}">View on Explorer</a>
 `;
@@ -107,6 +113,19 @@ provider.on("pending", async (txHash) => {
 
   processing--;
 });
+
+    const burst = trackBurst(nftContract);
+
+    const hasTwitter = !!info?.twitter;
+    const hasDiscord = !!info?.discord;
+
+    const score = getScore({
+    hasTwitter,
+    hasDiscord,
+    burst
+});
+
+    const verdict = getVerdict(score);
 
 // ==========================
 // KEEP ALIVE
